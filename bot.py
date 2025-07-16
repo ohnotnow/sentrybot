@@ -26,10 +26,10 @@ class SentryBot(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True
         super().__init__(command_prefix='!', intents=intents)
-        
+
         # Initialize API clients
         self.claude_client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        
+
         # MCP session for Sentry
         self.sentry_session = None
         self.sentry_tools = []
@@ -53,27 +53,27 @@ class SentryBot(commands.Bot):
                 ],
                 env=None
             )
-            
+
             # Start the Sentry MCP server
             stdio_transport = await self.exit_stack.enter_async_context(
                 stdio_client(server_params)
             )
-            
+
             read_stream, write_stream = stdio_transport
-            
+
             self.sentry_session = await self.exit_stack.enter_async_context(
                 ClientSession(read_stream, write_stream)
             )
-            
+
             # Initialize the session
             await self.sentry_session.initialize()
-            
+
             # Get available Sentry tools
             tools_response = await self.sentry_session.list_tools()
             self.sentry_tools = tools_response.tools
-            
+
             logger.info(f"Connected to Sentry with tools: {[tool.name for tool in self.sentry_tools]}")
-            
+
         except Exception as e:
             logger.error(f"Failed to connect to Sentry: {e}")
             self.sentry_session = None
@@ -81,9 +81,9 @@ class SentryBot(commands.Bot):
     async def ask_claude(self, user_message: str):
         """Ask Claude with access to Sentry tools"""
         try:
-            # Prepare message
+            # Start conversation
             messages = [{"role": "user", "content": user_message}]
-            
+
             # Prepare Sentry tools for Claude
             tools = []
             if self.sentry_session and self.sentry_tools:
@@ -95,53 +95,75 @@ class SentryBot(commands.Bot):
                     }
                     for tool in self.sentry_tools
                 ]
-            
-            # Query Claude
-            claude_params = {
-                "model": "claude-3-5-sonnet-20241022",
-                "max_tokens": 1000,
-                "messages": messages
-            }
-            
-            if tools:
-                claude_params["tools"] = tools
-                
-            response = await self.claude_client.messages.create(**claude_params)
-            
-            # Handle the response
-            final_response = ""
-            
-            for content in response.content:
-                if content.type == "text":
-                    final_response += content.text
-                elif content.type == "tool_use" and self.sentry_session:
-                    # Execute Sentry tool
-                    tool_result = await self.sentry_session.call_tool(
-                        content.name, 
-                        content.input
-                    )
-                    
-                    # Get Claude's final response with the tool result
-                    messages.append({"role": "assistant", "content": response.content})
-                    messages.append({
-                        "role": "user",
-                        "content": [{
-                            "type": "tool_result",
-                            "tool_use_id": content.id,
-                            "content": str(tool_result.content[0].text) if tool_result.content else "No result"
-                        }]
-                    })
-                    
-                    final_response_obj = await self.claude_client.messages.create(
-                        model="claude-3-5-sonnet-20241022",
-                        max_tokens=1000,
-                        messages=messages
-                    )
-                    
-                    final_response += final_response_obj.content[0].text
-            
-            return final_response if final_response else "I couldn't process that request."
-            
+
+            # Keep looping until Claude gives a final answer
+            max_iterations = 10  # Prevent infinite loops
+            iteration = 0
+
+            while iteration < max_iterations:
+                iteration += 1
+
+                # Query Claude
+                claude_params = {
+                    "model": "claude-3-5-sonnet-20241022",
+                    "max_tokens": 1000,
+                    "messages": messages
+                }
+
+                if tools:
+                    claude_params["tools"] = tools
+
+                response = await self.claude_client.messages.create(**claude_params)
+
+                # Add Claude's response to the conversation
+                messages.append({"role": "assistant", "content": response.content})
+
+                # Check if Claude made tool calls
+                tool_calls_made = False
+                tool_results = []
+
+                for content in response.content:
+                    if content.type == "tool_use" and self.sentry_session:
+                        tool_calls_made = True
+
+                        try:
+                            # Execute the tool
+                            tool_result = await self.sentry_session.call_tool(
+                                content.name,
+                                content.input
+                            )
+
+                            # Prepare the result for Claude
+                            result_content = str(tool_result.content[0].text) if tool_result.content else "No result"
+
+                            tool_results.append({
+                                "type": "tool_result",
+                                "tool_use_id": content.id,
+                                "content": result_content
+                            })
+
+                        except Exception as e:
+                            logger.error(f"Tool execution error: {e}")
+                            tool_results.append({
+                                "type": "tool_result",
+                                "tool_use_id": content.id,
+                                "content": f"Error: {str(e)}"
+                            })
+
+                # If Claude made tool calls, send the results back
+                if tool_calls_made:
+                    messages.append({"role": "user", "content": tool_results})
+                else:
+                    # Claude didn't make tool calls, so we have the final answer
+                    final_text = ""
+                    for content in response.content:
+                        if content.type == "text":
+                            final_text += content.text
+
+                    return final_text if final_text else "I couldn't process that request."
+
+            return "Sorry, the request took too many steps to complete."
+
         except Exception as e:
             logger.error(f"Error asking Claude: {e}")
             return f"Sorry, I encountered an error: {str(e)}"
@@ -171,7 +193,7 @@ async def ask(ctx, *, question: str):
     """Ask about Sentry data"""
     async with ctx.typing():
         response = await ctx.bot.ask_claude(question)
-        
+
         # Split long responses for Discord
         if len(response) > 2000:
             for i in range(0, len(response), 2000):
@@ -193,7 +215,7 @@ async def main():
     bot = SentryBot()
     bot.add_command(ask)
     bot.add_command(status)
-    
+
     try:
         await bot.start(os.getenv("DISCORD_BOT_TOKEN"))
     except KeyboardInterrupt:
@@ -203,4 +225,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
