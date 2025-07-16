@@ -4,6 +4,9 @@ import asyncio
 import os
 from contextlib import AsyncExitStack
 import logging
+from collections import defaultdict, deque
+import json
+from datetime import datetime, timedelta
 
 # MCP imports
 from mcp import ClientSession, StdioServerParameters
@@ -35,6 +38,57 @@ class SentryBot(commands.Bot):
         self.sentry_tools = []
         self.exit_stack = AsyncExitStack()
 
+        # Memory storage - keep last 10 messages per user/channel
+        self.conversation_memory = defaultdict(lambda: deque(maxlen=10))
+        self.memory_timeout = timedelta(hours=2)  # Clear old conversations
+
+    def get_memory_key(self, ctx):
+        """Generate a unique key for this conversation context"""
+        # Option 1: Per user (remembers across all channels)
+        # return f"user_{ctx.author.id}"
+
+        # Option 2: Per channel (all users in channel share memory)
+        # return f"channel_{ctx.channel.id}"
+
+        # Option 3: Per user per channel (separate memory per user per channel)
+        return f"user_{ctx.author.id}_channel_{ctx.channel.id}"
+
+    def add_to_memory(self, ctx, role: str, content: str):
+        """Add a message to conversation memory"""
+        memory_key = self.get_memory_key(ctx)
+
+        message = {
+            "role": role,
+            "content": content,
+            "timestamp": datetime.now()
+        }
+
+        self.conversation_memory[memory_key].append(message)
+
+    def get_conversation_history(self, ctx):
+        """Get recent conversation history for Claude"""
+        memory_key = self.get_memory_key(ctx)
+        messages = []
+
+        # Clean up old messages
+        now = datetime.now()
+        memory = self.conversation_memory[memory_key]
+
+        # Remove messages older than timeout
+        while memory and now - memory[0]["timestamp"] > self.memory_timeout:
+            memory.popleft()
+
+        # Convert to Claude format
+        for msg in memory:
+            messages.append({
+                "role": msg["role"],
+                "content": msg["content"]
+            })
+
+        return messages
+
+    # ... (keep all your existing MCP setup methods unchanged) ...
+
     async def setup_hook(self):
         """Called when the bot is starting up"""
         logger.info("Connecting to Sentry MCP server...")
@@ -43,7 +97,6 @@ class SentryBot(commands.Bot):
     async def connect_to_sentry(self):
         """Connect to Sentry MCP server"""
         try:
-            # Sentry MCP server parameters
             server_params = StdioServerParameters(
                 command="npx",
                 args=[
@@ -54,7 +107,6 @@ class SentryBot(commands.Bot):
                 env=None
             )
 
-            # Start the Sentry MCP server
             stdio_transport = await self.exit_stack.enter_async_context(
                 stdio_client(server_params)
             )
@@ -65,10 +117,8 @@ class SentryBot(commands.Bot):
                 ClientSession(read_stream, write_stream)
             )
 
-            # Initialize the session
             await self.sentry_session.initialize()
 
-            # Get available Sentry tools
             tools_response = await self.sentry_session.list_tools()
             self.sentry_tools = tools_response.tools
 
@@ -78,11 +128,17 @@ class SentryBot(commands.Bot):
             logger.error(f"Failed to connect to Sentry: {e}")
             self.sentry_session = None
 
-    async def ask_claude(self, user_message: str):
-        """Ask Claude with access to Sentry tools"""
+    async def ask_claude_with_memory(self, ctx, user_message: str):
+        """Ask Claude with conversation history"""
         try:
-            # Start conversation
-            messages = [{"role": "user", "content": user_message}]
+            # Get conversation history
+            messages = self.get_conversation_history(ctx)
+
+            # Add the new user message
+            messages.append({"role": "user", "content": user_message})
+
+            # Store user message in memory
+            self.add_to_memory(ctx, "user", user_message)
 
             # Prepare Sentry tools for Claude
             tools = []
@@ -97,13 +153,12 @@ class SentryBot(commands.Bot):
                 ]
 
             # Keep looping until Claude gives a final answer
-            max_iterations = 10  # Prevent infinite loops
+            max_iterations = 10
             iteration = 0
 
             while iteration < max_iterations:
                 iteration += 1
 
-                # Query Claude
                 claude_params = {
                     "model": "claude-3-5-sonnet-20241022",
                     "max_tokens": 1000,
@@ -115,10 +170,8 @@ class SentryBot(commands.Bot):
 
                 response = await self.claude_client.messages.create(**claude_params)
 
-                # Add Claude's response to the conversation
                 messages.append({"role": "assistant", "content": response.content})
 
-                # Check if Claude made tool calls
                 tool_calls_made = False
                 tool_results = []
 
@@ -127,13 +180,11 @@ class SentryBot(commands.Bot):
                         tool_calls_made = True
 
                         try:
-                            # Execute the tool
                             tool_result = await self.sentry_session.call_tool(
                                 content.name,
                                 content.input
                             )
 
-                            # Prepare the result for Claude
                             result_content = str(tool_result.content[0].text) if tool_result.content else "No result"
 
                             tool_results.append({
@@ -150,15 +201,18 @@ class SentryBot(commands.Bot):
                                 "content": f"Error: {str(e)}"
                             })
 
-                # If Claude made tool calls, send the results back
                 if tool_calls_made:
                     messages.append({"role": "user", "content": tool_results})
                 else:
-                    # Claude didn't make tool calls, so we have the final answer
+                    # Final answer - extract text and store in memory
                     final_text = ""
                     for content in response.content:
                         if content.type == "text":
                             final_text += content.text
+
+                    # Store Claude's response in memory
+                    if final_text:
+                        self.add_to_memory(ctx, "assistant", final_text)
 
                     return final_text if final_text else "I couldn't process that request."
 
@@ -187,19 +241,32 @@ class SentryBot(commands.Bot):
             await self.exit_stack.aclose()
         await super().close()
 
-# Simple commands
+# Commands
 @commands.command(name='ask')
 async def ask(ctx, *, question: str):
-    """Ask about Sentry data"""
+    """Ask about Sentry data with memory"""
     async with ctx.typing():
-        response = await ctx.bot.ask_claude(question)
+        response = await ctx.bot.ask_claude_with_memory(ctx, question)
 
-        # Split long responses for Discord
         if len(response) > 2000:
             for i in range(0, len(response), 2000):
                 await ctx.send(response[i:i+2000])
         else:
             await ctx.send(response)
+
+@commands.command(name='forget')
+async def forget(ctx):
+    """Clear conversation memory"""
+    memory_key = ctx.bot.get_memory_key(ctx)
+    ctx.bot.conversation_memory[memory_key].clear()
+    await ctx.send("🧠 Conversation memory cleared!")
+
+@commands.command(name='memory')
+async def memory_status(ctx):
+    """Check memory status"""
+    memory_key = ctx.bot.get_memory_key(ctx)
+    message_count = len(ctx.bot.conversation_memory[memory_key])
+    await ctx.send(f"💭 I remember {message_count} messages from our conversation")
 
 @commands.command(name='status')
 async def status(ctx):
@@ -214,6 +281,8 @@ async def status(ctx):
 async def main():
     bot = SentryBot()
     bot.add_command(ask)
+    bot.add_command(forget)
+    bot.add_command(memory_status)
     bot.add_command(status)
 
     try:
