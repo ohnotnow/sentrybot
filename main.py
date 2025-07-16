@@ -87,8 +87,6 @@ class SentryBot(commands.Bot):
 
         return messages
 
-    # ... (keep all your existing MCP setup methods unchanged) ...
-
     async def setup_hook(self):
         """Called when the bot is starting up"""
         logger.info("Connecting to Sentry MCP server...")
@@ -232,7 +230,27 @@ class SentryBot(commands.Bot):
         """Handle incoming messages"""
         if message.author == self.user:
             return
+
+        # Process commands first
         await self.process_commands(message)
+
+        # If it wasn't a command and the bot was mentioned or it's a DM, respond
+        if not message.content.startswith(self.command_prefix):
+            # Check if bot was mentioned or it's a DM
+            if self.user.mentioned_in(message) or isinstance(message.channel, discord.DMChannel):
+                async with message.channel.typing():
+                    # Remove the mention from the message content
+                    content = message.content.replace(f'<@{self.user.id}>', '').strip()
+                    if not content:
+                        content = "Hello!"
+
+                    response = await self.ask_claude_with_memory(message, content)
+
+                    if len(response) > 2000:
+                        for i in range(0, len(response), 2000):
+                            await message.reply(response[i:i+2000])
+                    else:
+                        await message.reply(response)
 
     async def close(self):
         """Clean up when shutting down"""
