@@ -27,7 +27,7 @@ cd sentrybot
 ## Prerequisites
 
 - **git** (already installed)
-- **Python** 3.8 or higher
+- **Python** 3.11 or higher
 - **Discord Bot Token** (create at https://discord.com/developers/applications)
 - **Anthropic API Key** (`ANTHROPIC_API_KEY`)
 - **Sentry Auth Token** (`SENTRY_AUTH_TOKEN`)
