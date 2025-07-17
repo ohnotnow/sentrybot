@@ -231,6 +231,11 @@ class SentryBot(commands.Bot):
         if message.author == self.user:
             return
 
+        # if we only want to response to messages from a specific server, we can add a check here
+        if message.guild.id != os.getenv("DISCORD_SERVER_ID"):
+            logger.info(f"Message from {message.author} in {message.guild.name} ignored")
+            return
+
         # Process commands first
         await self.process_commands(message)
 

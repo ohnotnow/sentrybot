@@ -27,11 +27,12 @@ cd sentrybot
 ## Prerequisites
 
 - **git** (already installed)
-- **Python** 3.11 or higher
-- **Discord Bot Token** (create at https://discord.com/developers/applications)
+- **Python** 3.13 or higher
+- **Discord Bot Token** (create at https://discord.com/developers/applications) (`DISCORD_BOT_TOKEN`)
 - **Anthropic API Key** (`ANTHROPIC_API_KEY`)
 - **Sentry Auth Token** (`SENTRY_AUTH_TOKEN`)
 - _(Optional)_ **Sentry Host** (`SENTRY_HOST`, defaults to `sentry.io`)
+- _(Optional - only respond to one server)_ **Discord server ID** (`DISCORD_SERVER_ID`)
 - **uv** CLI tool for Python
   - Documentation: https://docs.astral.sh/uv/
 
@@ -56,6 +57,7 @@ ANTHROPIC_API_KEY=<your_anthropic_api_key>
 SENTRY_AUTH_TOKEN=<your_sentry_auth_token>
 # Optional:
 SENTRY_HOST=<your_sentry_host>  # defaults to sentry.io
+DISCORD_SERVER_ID=<your_server_id>  # make the bot only respond to one server
 ```
 
 ### 3. Install dependencies
@@ -88,19 +90,29 @@ The bot will:
 
 ---
 
+## Running the bot using Docker
+
+You can run the bot using Docker.  There is a Dockerfile in the project, and also a convenience script `run.sh` which will build and run the container.
+
+```bash
+./run.sh pandora
+```
+
+This will build the image, and then run the container for a bot named `pandora`.  The container expects there to be a file called `.env.pandora` with your various Sentry and Discord keys/tokens.
+
 ## Usage
 
 In any channel where the bot is invited:
 
-- **!ask** _<question>_  
-  Ask Claude about Sentry data.  
-  Example:  
+- **!ask** _<question>_
+  Ask Claude about Sentry data.
+  Example:
   ```
   !ask How many errors occurred in the last 24 hours?
   ```
 
-- **!status**  
-  Check if the bot is connected to Sentry and how many tools are available.  
+- **!status**
+  Check if the bot is connected to Sentry and how many tools are available.
   Example:
   ```
   !status
@@ -134,5 +146,5 @@ The bot uses Python’s built-in `logging` module at `INFO` level. Logs include:
 
 ## License
 
-This project is licensed under the MIT License.  
+This project is licensed under the MIT License.
 See the [LICENSE](LICENSE) file for details.
