@@ -232,7 +232,7 @@ class SentryBot(commands.Bot):
             return
 
         # if we only want to response to messages from a specific server, we can add a check here
-        if message.guild.id != os.getenv("DISCORD_SERVER_ID"):
+        if int(message.guild.id) != int(os.getenv("DISCORD_SERVER_ID")):
             logger.info(f"Message from {message.author} in {message.guild.name} ignored")
             logger.info(f"Guild ID: {message.guild.id}")
             logger.info(f"Server ID: {os.getenv('DISCORD_SERVER_ID')}")
