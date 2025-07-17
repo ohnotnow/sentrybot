@@ -129,15 +129,17 @@ class SentryBot(commands.Bot):
     async def ask_claude_with_memory(self, ctx, user_message: str):
         """Ask Claude with conversation history"""
         system_prompt = """
-        You are a helpful assistant that can answer questions about Sentry data. You are also able to use the tools
-        provided to you to answer questions.
+        You are a helpful assistant that can answer questions about issue information from Sentry.io - the software error tracking platform.
+
+        You are also able to use the tools provided to you by sentry to answer questions very thoroughly.
 
         For your final response - please assume the user is a technically minded, experienced software engineer.  Remember
         to be friendly and supportive - they might be stressed or frustrated as they are dealing with a bug or issue.
 
         If the user gives you an sentry issue id, you can use that to help you understand which Sentry project the issue
         is about - the format of a sentry issue id is "PROJECT_NAME-ISSUE" so from that you can determine the project
-        name when you are using the tools to look up information.
+        name when you are using the tools to look up information which will help the user not have to spell out so many
+        details.
         """
 
         try:
@@ -170,7 +172,7 @@ class SentryBot(commands.Bot):
                 iteration += 1
 
                 claude_params = {
-                    "model": "claude-3-5-sonnet-20241022",
+                    "model": "claude-sonnet-4-20250514",
                     "max_tokens": 1000,
                     "messages": messages,
                     "system": system_prompt
