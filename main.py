@@ -176,6 +176,8 @@ class SentryBot(commands.Bot):
                 for content in response.content:
                     if content.type == "tool_use" and self.sentry_session:
                         tool_calls_made = True
+                        logger.info(f"Tool call made: {content.name}")
+                        logger.info(f"Tool call input: {content.input}")
 
                         try:
                             tool_result = await self.sentry_session.call_tool(
