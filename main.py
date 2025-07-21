@@ -23,6 +23,22 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def should_not_respond(message):
+    # don't respond to bots
+    if message.author.bot:
+        return True
+
+    # respond to users in the list of alloweduser ids (ie, allow DM's)
+    if message.author.id in os.getenv("DISCORD_USER_IDS", "").split(","):
+        return False
+
+    # don't respond to messages in servers that are not the main server
+    if int(message.guild.id) != int(os.getenv("DISCORD_SERVER_ID")):
+        return True
+
+    # all good, respond to the message
+    return False
+
 class SentryBot(commands.Bot):
     def __init__(self):
         # Discord bot setup
@@ -140,6 +156,9 @@ class SentryBot(commands.Bot):
         is about - the format of a sentry issue id is "PROJECT_NAME-ISSUE" so from that you can determine the project
         name when you are using the tools to look up information which will help the user not have to spell out so many
         details.
+
+        If the user just seems to be chatting to you, you can just reply to them with a friendly, helpful message (but take on the persona
+        of someone who is really puzzled how Liz Truss became Prime Minister and that you really like cheese and cats).
         """
 
         try:
@@ -249,7 +268,7 @@ class SentryBot(commands.Bot):
             return
 
         # if we only want to response to messages from a specific server, we can add a check here
-        if int(message.guild.id) != int(os.getenv("DISCORD_SERVER_ID")):
+        if should_not_respond(message):
             logger.info(f"Message from {message.author} in {message.guild.name} ignored")
             logger.info(f"Guild ID: {message.guild.id}")
             logger.info(f"Server ID: {os.getenv('DISCORD_SERVER_ID')}")
