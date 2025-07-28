@@ -7,11 +7,11 @@ A Discord bot that integrates with Sentry via the Sentry MCP protocol and uses A
 ## Features
 
 - Connects to a Sentry MCP server to list and call tools.
-- Interacts with Anthropic Claude (via `AsyncAnthropic`) to generate responses.
+- Interacts with Anthropic Claude to generate responses (you need an `ANTHROPIC_API_KEY`).
 - Provides two slash-style commands:
   - **!ask**: Ask Claude a question about Sentry events/data.
   - **!status**: Check Sentry connection status and tool availability.
-- Graceful startup and shutdown with proper logging.
+- Also acts as a general chatbot and is aware of the sentry MCP tools.
 
 ---
 
@@ -33,6 +33,7 @@ cd sentrybot
 - **Sentry Auth Token** (`SENTRY_AUTH_TOKEN`)
 - _(Optional)_ **Sentry Host** (`SENTRY_HOST`, defaults to `sentry.io`)
 - _(Optional - only respond to one server)_ **Discord server ID** (`DISCORD_SERVER_ID`)
+- _(Optional - allow direct private messages from specific users)_ **Discord user IDs** (`DISCORD_USER_IDS` - csv of user ids)
 - **uv** CLI tool for Python
   - Documentation: https://docs.astral.sh/uv/
 
