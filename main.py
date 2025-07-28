@@ -28,9 +28,14 @@ def should_not_respond(message):
     if message.author.bot:
         return True
 
+    logger.info(os.getenv("DISCORD_USER_IDS"))
     # respond to users in the list of alloweduser ids (ie, allow DM's)
     if message.author.id in os.getenv("DISCORD_USER_IDS", "").split(","):
         return False
+
+    # ignore other DMs
+    if message.guild is None:
+        return True
 
     # don't respond to messages in servers that are not the main server
     if int(message.guild.id) != int(os.getenv("DISCORD_SERVER_ID")):
