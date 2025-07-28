@@ -28,9 +28,11 @@ def should_not_respond(message):
     if message.author.bot:
         return True
 
-    logger.info(os.getenv("DISCORD_USER_IDS"))
+    # read the allowed user ID's and convert to a list of integers
+    allowed_user_ids = [int(id) for id in os.getenv("DISCORD_USER_IDS", "").split(",")]
+
     # respond to users in the list of alloweduser ids (ie, allow DM's)
-    if message.author.id in os.getenv("DISCORD_USER_IDS", "").split(","):
+    if int(message.author.id) in allowed_user_ids:
         return False
 
     # ignore other DMs
@@ -274,9 +276,11 @@ class SentryBot(commands.Bot):
 
         # if we only want to response to messages from a specific server, we can add a check here
         if should_not_respond(message):
-            logger.info(f"Message from {message.author} in {message.guild.name} ignored")
-            logger.info(f"Guild ID: {message.guild.id}")
-            logger.info(f"Server ID: {os.getenv('DISCORD_SERVER_ID')}")
+            logger.info(f"Message from {message.author} ignored")
+            if message.guild is not None:
+                logger.info(f"Message from {message.author} in {message.guild.name} ignored")
+                logger.info(f"Guild ID: {message.guild.id}")
+                logger.info(f"Server ID: {os.getenv('DISCORD_SERVER_ID')}")
             return
 
         # Process commands first
