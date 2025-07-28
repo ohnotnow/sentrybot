@@ -68,7 +68,7 @@ class SentryBot(commands.Bot):
     def get_memory_key(self, ctx):
         """Generate a unique key for this conversation context"""
         # Option 1: Per user (remembers across all channels)
-        # return f"user_{ctx.author.id}"
+        return f"user_{ctx.author.id}"
 
         # Option 2: Per channel (all users in channel share memory)
         # return f"channel_{ctx.channel.id}"
@@ -315,6 +315,10 @@ class SentryBot(commands.Bot):
 @commands.command(name='ask')
 async def ask(ctx, *, question: str):
     """Ask about Sentry data with memory"""
+    if should_not_respond(ctx.message):
+        logger.info(f"Message from {ctx.author} ignored")
+        return
+
     async with ctx.typing():
         response = await ctx.bot.ask_claude_with_memory(ctx, question)
 
@@ -327,6 +331,10 @@ async def ask(ctx, *, question: str):
 @commands.command(name='forget')
 async def forget(ctx):
     """Clear conversation memory"""
+    if should_not_respond(ctx.message):
+        logger.info(f"Message from {ctx.author} ignored")
+        return
+
     memory_key = ctx.bot.get_memory_key(ctx)
     ctx.bot.conversation_memory[memory_key].clear()
     await ctx.send("🧠 Conversation memory cleared!")
@@ -334,6 +342,10 @@ async def forget(ctx):
 @commands.command(name='memory')
 async def memory_status(ctx):
     """Check memory status"""
+    if should_not_respond(ctx.message):
+        logger.info(f"Message from {ctx.author} ignored")
+        return
+
     memory_key = ctx.bot.get_memory_key(ctx)
     message_count = len(ctx.bot.conversation_memory[memory_key])
     await ctx.send(f"💭 I remember {message_count} messages from our conversation")
@@ -341,6 +353,10 @@ async def memory_status(ctx):
 @commands.command(name='status')
 async def status(ctx):
     """Check Sentry connection status"""
+    if should_not_respond(ctx.message):
+        logger.info(f"Message from {ctx.author} ignored")
+        return
+
     if ctx.bot.sentry_session:
         tool_count = len(ctx.bot.sentry_tools)
         await ctx.send(f"✅ Connected to Sentry with {tool_count} tools available")
