@@ -299,8 +299,33 @@ class SentryBot(commands.Bot):
                     response = await self.ask_claude_with_memory(message, content)
 
                     if len(response) > 2000:
-                        for i in range(0, len(response), 2000):
-                            await message.reply(response[i:i+2000])
+                        # Split on word boundaries to avoid cutting words
+                        parts = []
+                        remaining = response
+
+                        while len(remaining) > 2000:
+                            # Find the last whitespace within 2000 characters
+                            chunk = remaining[:2000]
+                            last_space = chunk.rfind(' ')
+                            last_newline = chunk.rfind('\n')
+
+                            # Use the furthest whitespace character (space or newline)
+                            split_point = max(last_space, last_newline)
+
+                            # If no whitespace found within reasonable range, fall back to hard cut
+                            if split_point < 1800:  # Don't split too early
+                                split_point = 2000
+
+                            parts.append(remaining[:split_point])
+                            remaining = remaining[split_point:].lstrip()  # Remove leading whitespace
+
+                        # Add the remaining part
+                        if remaining:
+                            parts.append(remaining)
+
+                        # Send each part
+                        for part in parts:
+                            await message.reply(part)
                     else:
                         await message.reply(response)
 
