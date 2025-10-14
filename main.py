@@ -14,35 +14,70 @@ from mcp.client.stdio import stdio_client
 
 # Claude API imports
 from anthropic import AsyncAnthropic
+import re
 
 # Load environment variables
 from dotenv import load_dotenv
 load_dotenv()
 
+WATCH_CHANNELS = [752532282878984302, 1312024086259699733]  # Channel IDs to monitor
+RESULTS_CHANNEL_ID = 1397605665270141099  # Where to post results
+BOT_USER_ID = 1395071159514562702
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def should_not_respond(message):
-    # don't respond to bots
-    if message.author.bot:
-        return True
+recent_errors = {}  # {error_key: datetime}
+COOLDOWN_MINUTES = 10
 
+def extract_error_key(message_content):
+    # Extract something unique - could be URL, error title, etc.
+    # Simple example: just grab the sentry.io URL
+    import re
+    match = re.search(r'sentry\.io/[^\s]+', message_content)
+    return match.group(0) if match else None
+
+def extract_issue_id(embed):
+    """Extract issue ID from Sentry embed description."""
+    if not embed.description:
+        return None
+    pattern = r'^([A-Z0-9-]+)\s+via'
+    match = re.search(pattern, str(embed.description))
+    return match.group(1) if match else None
+
+def extract_app_name(embed):
+    """Extract app name from Sentry embed description."""
+    if not embed.description:
+        return None
+
+    # Match pattern: APPNAME-SOMETHING via [Discord]
+    match = re.search(r'([A-Z]+-[A-Z0-9]+)\s+via \[Discord\]', embed.description)
+    if match:
+        # Return just the app prefix (e.g., "EXAMDB-W" -> "EXAMDB")
+        app_full = match.group(1)
+        return app_full.split('-')[0]
+
+    return None
+
+def should_not_respond(message):
     # read the allowed user ID's and convert to a list of integers
     allowed_user_ids = [int(id) for id in os.getenv("DISCORD_USER_IDS", "").split(",")]
 
     # respond to users in the list of alloweduser ids (ie, allow DM's)
     if int(message.author.id) in allowed_user_ids:
         return False
-
     # ignore other DMs
     if message.guild is None:
         return True
-
     # don't respond to messages in servers that are not the main server
     if int(message.guild.id) != int(os.getenv("DISCORD_SERVER_ID")):
         return True
-
+    # don't respond to bots
+    if message.author.bot:
+        if "Please use 'seer' to investigate!" in message.content:
+            return False
+        return True
     # all good, respond to the message
     return False
 
@@ -198,7 +233,7 @@ class SentryBot(commands.Bot):
                 iteration += 1
 
                 claude_params = {
-                    "model": "claude-sonnet-4-20250514",
+                    "model": "claude-sonnet-4-5",
                     "max_tokens": 1000,
                     "messages": messages,
                     "system": system_prompt
@@ -271,10 +306,47 @@ class SentryBot(commands.Bot):
 
     async def on_message(self, message):
         """Handle incoming messages"""
-        if message.author == self.user:
-            return
 
         # if we only want to response to messages from a specific server, we can add a check here
+        if message.channel.id in WATCH_CHANNELS and message.embeds:
+            logger.info(f"Message from {message.author} in {message.channel.name} being processed")
+            logger.info(f"Channel ID: {message.channel.id}")
+            logger.info(f"Server ID: {os.getenv('DISCORD_SERVER_ID')}")
+
+            embed = message.embeds[0]
+            issue_id = extract_issue_id(embed)
+            # message_text = message.content
+            # pattern = r'^([A-Z0-9-]+)\s+via'
+            # logger.info(f"Searching for issue ID in message: {message_text}")
+            # match = re.search(pattern, str(message_text))
+            # issue_id = match.group(1) if match else None
+
+            logger.info(f"Issue ID: {issue_id}")
+
+            if not issue_id:
+                logger.info(f"No issue ID found in message: {message}")
+                return
+
+            if embed.title:
+                error_type = embed.title
+                app_name = extract_app_name(embed)
+                issue_id = extract_issue_id(embed)
+
+                # Dedupe by app + error type
+                error_key = f"{app_name}:{error_type}" if app_name else error_type
+                now = datetime.now()
+
+                if error_key in recent_errors:
+                    if now - recent_errors[error_key] < timedelta(minutes=COOLDOWN_MINUTES):
+                        return
+
+                recent_errors[error_key] = now
+            results_channel = self.get_channel(RESULTS_CHANNEL_ID)
+            bot_user = self.get_user(BOT_USER_ID)
+            message_for_bot = f"Hi there {bot_user.mention}! Could you look into sentry issue {issue_id}?  Please use 'seer' to investigate!"
+            await results_channel.send(message_for_bot)
+            return
+
         if should_not_respond(message):
             logger.info(f"Message from {message.author} ignored")
             if message.guild is not None:
