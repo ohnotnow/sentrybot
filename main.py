@@ -20,9 +20,10 @@ import re
 from dotenv import load_dotenv
 load_dotenv()
 
-WATCH_CHANNELS = [752532282878984302, 1312024086259699733]  # Channel IDs to monitor
-RESULTS_CHANNEL_ID = 1397605665270141099  # Where to post results
-BOT_USER_ID = 1395071159514562702
+# convert the channel ids to integers
+WATCH_CHANNELS = [int(id) for id in os.getenv("DISCORD_WATCH_CHANNELS", "").split(",")]
+RESULTS_CHANNEL_ID = int(os.getenv("DISCORD_RESULTS_CHANNEL_ID"))
+BOT_USER_ID = int(os.getenv("DISCORD_BOT_USER_ID"))
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
