@@ -22,8 +22,8 @@ load_dotenv()
 
 # convert the channel ids to integers
 WATCH_CHANNELS = [int(id) for id in os.getenv("DISCORD_WATCH_CHANNELS", "").split(",")]
-RESULTS_CHANNEL_ID = int(os.getenv("DISCORD_RESULTS_CHANNEL_ID"))
-BOT_USER_ID = int(os.getenv("DISCORD_BOT_USER_ID"))
+RESULTS_CHANNEL_ID = int(os.getenv("DISCORD_RESULTS_CHANNEL_ID", 0))
+BOT_USER_ID = int(os.getenv("DISCORD_BOT_USER_ID", 0))
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -41,10 +41,10 @@ def extract_error_key(message_content):
 
 def extract_issue_id(embed):
     """Extract issue ID from Sentry embed description."""
-    if not embed.description:
+    if not embed.footer.text:
         return None
     pattern = r'^([A-Z0-9-]+)\s+via'
-    match = re.search(pattern, str(embed.description))
+    match = re.search(pattern, str(embed.footer.text))
     return match.group(1) if match else None
 
 def extract_app_name(embed):
@@ -63,7 +63,7 @@ def extract_app_name(embed):
 
 def should_not_respond(message):
     # read the allowed user ID's and convert to a list of integers
-    allowed_user_ids = [int(id) for id in os.getenv("DISCORD_USER_IDS", "").split(",")]
+    allowed_user_ids = [int(id) for id in os.getenv("DISCORD_USER_IDS", "0").split(",")]
 
     # respond to users in the list of alloweduser ids (ie, allow DM's)
     if int(message.author.id) in allowed_user_ids:
@@ -308,6 +308,13 @@ class SentryBot(commands.Bot):
     async def on_message(self, message):
         """Handle incoming messages"""
 
+        # if "!sentry" in message.content:
+        #     embedVar = discord.Embed(title="Fake Sentry Issue", description="FAKEISSUE-W2 via [Discord]", color=0x00ff00)
+        #     embedVar.add_field(name="Fake Field 1", value="hi", inline=False)
+        #     embedVar.add_field(name="Fake Field 2", value="hi2", inline=False)
+        #     await message.channel.send(embed=embedVar)
+        #     return
+
         # if we only want to response to messages from a specific server, we can add a check here
         if message.channel.id in WATCH_CHANNELS and message.embeds:
             logger.info(f"Message from {message.author} in {message.channel.name} being processed")
@@ -315,6 +322,8 @@ class SentryBot(commands.Bot):
             logger.info(f"Server ID: {os.getenv('DISCORD_SERVER_ID')}")
 
             embed = message.embeds[0]
+            logger.info(f"Embed title: {embed.title}")
+            logger.info(f"Embed footer: {embed.footer}")
             issue_id = extract_issue_id(embed)
             # message_text = message.content
             # pattern = r'^([A-Z0-9-]+)\s+via'
