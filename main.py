@@ -354,6 +354,19 @@ class SentryBot(commands.Bot):
             results_channel = self.get_channel(RESULTS_CHANNEL_ID)
             bot_user = self.get_user(BOT_USER_ID)
             message_for_bot = f"Hi there {bot_user.mention}! Could you look into sentry issue {issue_id}?  Please use 'seer' to investigate!"
+            # Check if the issue contains known strings that indicate it should be ignored
+            known_strings = [
+                {"getaddrinfo": "DNS gubbed again..."},
+                {"Connection refused (Connection: mysql" : "MySQL gubbed again - probably the network or DNS..."},
+                {"Connection timed out (Connection: mysql, SQL" : "MySQL gubbed again - probably the network or DNS..."},
+                {"Could not open /var/www/html/storage/app/livewire-tmp/" : "Looks like they've left the upload window open too long again..."},
+            ]
+            for known_string in known_strings:
+                if known_string.key in embed.description:
+                    message_for_bot = f"{known_string.value}"
+                    results_channel = message.channel
+                    break
+
             await results_channel.send(message_for_bot)
             return
 
