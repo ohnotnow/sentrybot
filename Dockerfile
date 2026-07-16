@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Use the official node image as the base image
-FROM node:20-slim
+FROM node:22-slim
 # Install Python and curl
 RUN apt-get update && apt-get install -y curl
 # Install uv
